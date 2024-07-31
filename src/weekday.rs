@@ -1,12 +1,43 @@
 use core::fmt;
 
+#[cfg(any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"))]
+use rkyv::{Archive, Deserialize, Serialize};
+
+use crate::OutOfRange;
+
 /// The day of week.
 ///
 /// The order of the days of week depends on the context.
 /// (This is why this type does *not* implement `PartialOrd` or `Ord` traits.)
 /// One should prefer `*_from_monday` or `*_from_sunday` methods to get the correct result.
+///
+/// # Example
+/// ```
+/// use chrono::Weekday;
+///
+/// let monday = "Monday".parse::<Weekday>().unwrap();
+/// assert_eq!(monday, Weekday::Mon);
+///
+/// let sunday = Weekday::try_from(6).unwrap();
+/// assert_eq!(sunday, Weekday::Sun);
+///
+/// assert_eq!(sunday.num_days_from_monday(), 6); // starts counting with Monday = 0
+/// assert_eq!(sunday.number_from_monday(), 7); // starts counting with Monday = 1
+/// assert_eq!(sunday.num_days_from_sunday(), 0); // starts counting with Sunday = 0
+/// assert_eq!(sunday.number_from_sunday(), 1); // starts counting with Sunday = 1
+///
+/// assert_eq!(sunday.succ(), monday);
+/// assert_eq!(sunday.pred(), Weekday::Sat);
+/// ```
 #[derive(PartialEq, Eq, Copy, Clone, Debug, Hash)]
-#[cfg_attr(feature = "rustc-serialize", derive(RustcEncodable, RustcDecodable))]
+#[cfg_attr(
+    any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"),
+    derive(Archive, Deserialize, Serialize),
+    archive(compare(PartialEq)),
+    archive_attr(derive(Clone, Copy, PartialEq, Eq, Debug, Hash))
+)]
+#[cfg_attr(feature = "rkyv-validation", archive(check_bytes))]
+#[cfg_attr(all(feature = "arbitrary", feature = "std"), derive(arbitrary::Arbitrary))]
 pub enum Weekday {
     /// Monday.
     Mon = 0,
@@ -31,7 +62,8 @@ impl Weekday {
     /// ----------- | ----- | ----- | ----- | ----- | ----- | ----- | -----
     /// `w.succ()`: | `Tue` | `Wed` | `Thu` | `Fri` | `Sat` | `Sun` | `Mon`
     #[inline]
-    pub fn succ(&self) -> Weekday {
+    #[must_use]
+    pub const fn succ(&self) -> Weekday {
         match *self {
             Weekday::Mon => Weekday::Tue,
             Weekday::Tue => Weekday::Wed,
@@ -49,7 +81,8 @@ impl Weekday {
     /// ----------- | ----- | ----- | ----- | ----- | ----- | ----- | -----
     /// `w.pred()`: | `Sun` | `Mon` | `Tue` | `Wed` | `Thu` | `Fri` | `Sat`
     #[inline]
-    pub fn pred(&self) -> Weekday {
+    #[must_use]
+    pub const fn pred(&self) -> Weekday {
         match *self {
             Weekday::Mon => Weekday::Sun,
             Weekday::Tue => Weekday::Mon,
@@ -67,16 +100,8 @@ impl Weekday {
     /// ------------------------- | ----- | ----- | ----- | ----- | ----- | ----- | -----
     /// `w.number_from_monday()`: | 1     | 2     | 3     | 4     | 5     | 6     | 7
     #[inline]
-    pub fn number_from_monday(&self) -> u32 {
-        match *self {
-            Weekday::Mon => 1,
-            Weekday::Tue => 2,
-            Weekday::Wed => 3,
-            Weekday::Thu => 4,
-            Weekday::Fri => 5,
-            Weekday::Sat => 6,
-            Weekday::Sun => 7,
-        }
+    pub const fn number_from_monday(&self) -> u32 {
+        self.days_since(Weekday::Mon) + 1
     }
 
     /// Returns a day-of-week number starting from Sunday = 1.
@@ -85,16 +110,8 @@ impl Weekday {
     /// ------------------------- | ----- | ----- | ----- | ----- | ----- | ----- | -----
     /// `w.number_from_sunday()`: | 2     | 3     | 4     | 5     | 6     | 7     | 1
     #[inline]
-    pub fn number_from_sunday(&self) -> u32 {
-        match *self {
-            Weekday::Mon => 2,
-            Weekday::Tue => 3,
-            Weekday::Wed => 4,
-            Weekday::Thu => 5,
-            Weekday::Fri => 6,
-            Weekday::Sat => 7,
-            Weekday::Sun => 1,
-        }
+    pub const fn number_from_sunday(&self) -> u32 {
+        self.days_since(Weekday::Sun) + 1
     }
 
     /// Returns a day-of-week number starting from Monday = 0.
@@ -102,17 +119,23 @@ impl Weekday {
     /// `w`:                        | `Mon` | `Tue` | `Wed` | `Thu` | `Fri` | `Sat` | `Sun`
     /// --------------------------- | ----- | ----- | ----- | ----- | ----- | ----- | -----
     /// `w.num_days_from_monday()`: | 0     | 1     | 2     | 3     | 4     | 5     | 6
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # #[cfg(feature = "clock")] {
+    /// # use chrono::{Local, Datelike};
+    /// // MTWRFSU is occasionally used as a single-letter abbreviation of the weekdays.
+    /// // Use `num_days_from_monday` to index into the array.
+    /// const MTWRFSU: [char; 7] = ['M', 'T', 'W', 'R', 'F', 'S', 'U'];
+    ///
+    /// let today = Local::now().weekday();
+    /// println!("{}", MTWRFSU[today.num_days_from_monday() as usize]);
+    /// # }
+    /// ```
     #[inline]
-    pub fn num_days_from_monday(&self) -> u32 {
-        match *self {
-            Weekday::Mon => 0,
-            Weekday::Tue => 1,
-            Weekday::Wed => 2,
-            Weekday::Thu => 3,
-            Weekday::Fri => 4,
-            Weekday::Sat => 5,
-            Weekday::Sun => 6,
-        }
+    pub const fn num_days_from_monday(&self) -> u32 {
+        self.days_since(Weekday::Mon)
     }
 
     /// Returns a day-of-week number starting from Sunday = 0.
@@ -121,15 +144,27 @@ impl Weekday {
     /// --------------------------- | ----- | ----- | ----- | ----- | ----- | ----- | -----
     /// `w.num_days_from_sunday()`: | 1     | 2     | 3     | 4     | 5     | 6     | 0
     #[inline]
-    pub fn num_days_from_sunday(&self) -> u32 {
-        match *self {
-            Weekday::Mon => 1,
-            Weekday::Tue => 2,
-            Weekday::Wed => 3,
-            Weekday::Thu => 4,
-            Weekday::Fri => 5,
-            Weekday::Sat => 6,
-            Weekday::Sun => 0,
+    pub const fn num_days_from_sunday(&self) -> u32 {
+        self.days_since(Weekday::Sun)
+    }
+
+    /// The number of days since the given day.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chrono::Weekday::*;
+    /// assert_eq!(Mon.days_since(Mon), 0);
+    /// assert_eq!(Sun.days_since(Tue), 5);
+    /// assert_eq!(Wed.days_since(Sun), 3);
+    /// ```
+    pub const fn days_since(&self, other: Weekday) -> u32 {
+        let lhs = *self as u32;
+        let rhs = other as u32;
+        if lhs < rhs {
+            7 + lhs - rhs
+        } else {
+            lhs - rhs
         }
     }
 }
@@ -145,6 +180,26 @@ impl fmt::Display for Weekday {
             Weekday::Sat => "Sat",
             Weekday::Sun => "Sun",
         })
+    }
+}
+
+/// Any weekday can be represented as an integer from 0 to 6, which equals to
+/// [`Weekday::num_days_from_monday`](#method.num_days_from_monday) in this implementation.
+/// Do not heavily depend on this though; use explicit methods whenever possible.
+impl TryFrom<u8> for Weekday {
+    type Error = OutOfRange;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Weekday::Mon),
+            1 => Ok(Weekday::Tue),
+            2 => Ok(Weekday::Wed),
+            3 => Ok(Weekday::Thu),
+            4 => Ok(Weekday::Fri),
+            5 => Ok(Weekday::Sat),
+            6 => Ok(Weekday::Sun),
+            _ => Err(OutOfRange::new()),
+        }
     }
 }
 
@@ -182,9 +237,18 @@ impl num_traits::FromPrimitive for Weekday {
 }
 
 /// An error resulting from reading `Weekday` value with `FromStr`.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ParseWeekdayError {
     pub(crate) _dummy: (),
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for ParseWeekdayError {}
+
+impl fmt::Display for ParseWeekdayError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_fmt(format_args!("{:?}", self))
+    }
 }
 
 impl fmt::Debug for ParseWeekdayError {
@@ -235,8 +299,40 @@ mod weekday_serde {
             deserializer.deserialize_str(WeekdayVisitor)
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Weekday;
 
     #[test]
+    fn test_days_since() {
+        for i in 0..7 {
+            let base_day = Weekday::try_from(i).unwrap();
+
+            assert_eq!(base_day.num_days_from_monday(), base_day.days_since(Weekday::Mon));
+            assert_eq!(base_day.num_days_from_sunday(), base_day.days_since(Weekday::Sun));
+
+            assert_eq!(base_day.days_since(base_day), 0);
+
+            assert_eq!(base_day.days_since(base_day.pred()), 1);
+            assert_eq!(base_day.days_since(base_day.pred().pred()), 2);
+            assert_eq!(base_day.days_since(base_day.pred().pred().pred()), 3);
+            assert_eq!(base_day.days_since(base_day.pred().pred().pred().pred()), 4);
+            assert_eq!(base_day.days_since(base_day.pred().pred().pred().pred().pred()), 5);
+            assert_eq!(base_day.days_since(base_day.pred().pred().pred().pred().pred().pred()), 6);
+
+            assert_eq!(base_day.days_since(base_day.succ()), 6);
+            assert_eq!(base_day.days_since(base_day.succ().succ()), 5);
+            assert_eq!(base_day.days_since(base_day.succ().succ().succ()), 4);
+            assert_eq!(base_day.days_since(base_day.succ().succ().succ().succ()), 3);
+            assert_eq!(base_day.days_since(base_day.succ().succ().succ().succ().succ()), 2);
+            assert_eq!(base_day.days_since(base_day.succ().succ().succ().succ().succ().succ()), 1);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
     fn test_serde_serialize() {
         use serde_json::to_string;
         use Weekday::*;
@@ -258,6 +354,7 @@ mod weekday_serde {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn test_serde_deserialize() {
         use serde_json::from_str;
         use Weekday::*;
@@ -292,5 +389,14 @@ mod weekday_serde {
         for str in errors {
             from_str::<Weekday>(str).unwrap_err();
         }
+    }
+
+    #[test]
+    #[cfg(feature = "rkyv-validation")]
+    fn test_rkyv_validation() {
+        let mon = Weekday::Mon;
+        let bytes = rkyv::to_bytes::<_, 1>(&mon).unwrap();
+
+        assert_eq!(rkyv::from_bytes::<Weekday>(&bytes).unwrap(), mon);
     }
 }

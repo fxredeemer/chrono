@@ -1,30 +1,9 @@
 ChangeLog for Chrono
 ====================
 
-This documents all notable changes to [Chrono](https://github.com/chronotope/chrono).
-
-Chrono obeys the principle of [Semantic Versioning](http://semver.org/), with one caveat: we may
-move previously-existing code behind a feature gate and put it behind a new feature. This new
-feature will always be placed in the `previously-default` feature, which you can use to prevent
-breakage if you use `no-default-features`.
-
-There were/are numerous minor versions before 1.0 due to the language changes.
-Versions with only mechanical changes will be omitted from the following list.
-
-## 0.4.20 (unreleased)
-
-* Add more formatting documentation and examples.
-* Add support for microseconds timestamps serde serialization/deserialization (#304)
-* Fix `DurationRound` is not TZ aware (#495)
-* Implement `DurationRound` for `NaiveDateTime`
-* Add `DateTime::from_local()` to construct from given local date and time (#572)
-* Correct build for wasm32-unknown-emscripten target (#568)
-* Change `Local::now()` and `Utc::now()` documentation from "current date" to "current date and time" (#647)
-* Fix `duration_round` panic on rounding by `Duration::zero()` (#658)
-* Add optional rkyv support.
-* Add support for microseconds timestamps serde serialization for `NaiveDateTime`.
-* Add support for optional timestamps serde serialization for `NaiveDateTime`.
-* Fix build for wasm32-unknown-emscripten (@yu-re-ka #593)
+This documents notable changes to [Chrono](https://github.com/chronotope/chrono)
+up to and including version 0.4.19. For later releases, please review the
+release notes on [GitHub](https://github.com/chronotope/chrono/releases).
 
 ## 0.4.19
 
@@ -750,4 +729,3 @@ and replaced by 0.2.25 very shortly. Duh.)
 ## 0.1.0 (2014-11-20)
 
 The initial version that was available to `crates.io`.
-
